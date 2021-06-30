@@ -1,0 +1,187 @@
+role user (Ui, Sj, GW : agent,
+           Kdi,Kei: symmetric_key,
+		   H: hash_func,
+		   Expp:hash_func,
+		   P: text,	   
+           SND_UG,RCV_UG : channel (dy))
+		   
+played_by Ui
+
+def=
+
+  local State:nat,
+        T1,K1,A,M1,M2,Ki,B,K3,K2,IDi,SIDj,M4,M6,M7,SK,Keinew  : text
+
+  const shared_key,sc_user_id,sc_sensor_id:protocol_id
+
+  init  State := 0
+
+  transition
+
+   1. State   = 0  	/\ RCV_UG(start)=|> 
+      State' := 1   /\ T1' := new()
+					/\ K1' := new()
+					/\ A'  := Expp(P,K1')
+					/\ M2' := H(A'.IDi.SIDj.Kdi.T1')
+					/\ M1' := xor(Kei,(IDi.SIDj.M2'))
+					/\ SND_UG(A'.M1'.Ki.T1')
+					
+					
+					
+
+   2. State   = 7   /\ RCV_UG(   B'
+								.xor((Keinew'.K3'.H(Kei.K3'.Kdi.T1.M4')),Kei)
+							  ) =|>
+								
+      State' := 8   /\ Kei':= Keinew'
+					/\ Ki' := K3'
+					/\ SK' := H(Expp(B',K1))
+					
+					/\ secret( IDi,sc_user_id  ,{Ui,GW})
+					/\ secret(SIDj,sc_sensor_id,{Ui,GW})
+					/\ witness(Ui,Sj,shared_key,SK')
+					/\ request(Ui,Sj,shared_key,SK')
+	
+
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+role sensor (Ui, Sj, GW : agent,
+             Kxj: symmetric_key,
+			 H: hash_func,
+			 Expp:hash_func,
+		     P: text,
+			 SND_SG,RCV_SG: channel(dy))
+			 
+played_by Sj
+
+def=
+  local State:nat,
+        T2,K2,A,B,SK,M3,M4,M5,SIDj   : text
+
+  const shared_key:protocol_id
+  init  State := 4
+
+  transition
+   1. State   = 4   /\ RCV_SG(A'
+							 .H(A'.SIDj'.Kxj.T2')
+							 .T2'
+							 )=|> 
+      State' := 5   /\ K2' := new()
+					/\ B'  := Expp(P,K2')
+					/\ SK' := H(Expp(A',K2))
+					/\ M4' := H(B'.SK.A')
+					/\ M5' := H(Kxj.H(A'.SIDj'.Kxj.T2').M4'.B')
+					/\ SND_SG(B'.M4'.M5')
+					
+					/\ witness(Ui,Sj,shared_key,SK')
+					/\ request(Ui,Sj,shared_key,SK')
+
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+role gateway (Ui, Sj, GW : agent,
+			  Kdi,Kei, Kxj, Xgwn: symmetric_key,
+			  H : hash_func,
+			  SND_UG,RCV_UG,SND_SG,RCV_SG: channel(dy))
+			 
+played_by GW
+
+def=
+
+  local State   : nat,
+        T1,T2,A,B,IDi,SIDj,M2,M3,M4,M6,M7,Ki,Keinew,K3 : text
+
+
+  const sc_user_id,sc_sensor_id:protocol_id
+  init  State := 2
+
+  transition
+				   %/\ SND_UG(A'.M1'.Ki.T1')
+   1.State   = 2    /\ RCV_UG(A'.
+							  xor(H(Ki'.Xgwn),(IDi'.SIDj'.H(A'.IDi'.SIDj'.Kdi.T1'))).
+							  Ki'.
+							  T1'
+							  )=|>
+							  
+	 State' := 3	/\ T2' := new()
+					/\ M3' := H(A'.SIDj'.Kxj.T2')
+					/\ SND_SG(A'.M3'.T2')
+					
+					/\ secret( IDi,sc_user_id  ,{Ui,GW})
+					/\ secret(SIDj,sc_sensor_id,{Ui,GW})
+					
+   2. State  = 5	/\ RCV_SG(B'
+							 .M4'
+							 .H(Kxj.M3.M4'.B')
+							  )=|>
+							  
+      State' :=6    /\ K3' := new()
+					/\ Keinew' := H(K3'.Xgwn)
+					/\ M7' := H(Kei.K3'.Kdi.T1.M4')
+					/\ M6' := xor((Keinew'.K3'.M7'),Kei)
+					/\ SND_UG(B'.M6')
+					
+					
+
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+role session(Ui, Sj, GW : agent,
+			 Kdi,Kei, Kxj,Xgwn: symmetric_key,
+			 H,Expp: hash_func,
+			 P: text			 
+			 )
+def=
+
+	local 	SSG,RSG,
+			SUG,RUG:channel(dy)
+
+  composition
+        user(Ui,Sj,GW,  Kdi,Kei,           H,Expp,P, SUG,RUG)
+  /\  sensor(Ui,Sj,GW,  Kxj,               H,Expp,P, SSG,RSG)
+  /\ gateway(Ui,Sj,GW,  Kdi,Kei,Kxj,Xgwn,  H,        SUG,RUG,SSG,RSG)
+  
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+role environment()
+
+def=
+
+  const ui, sj, gw : agent,
+        kdi,kei, kxj,xgwn, kig,keig: symmetric_key,
+        shared_key, sc_user_id ,
+		sk_sensor_gwn, sc_sensor_id: protocol_id,
+		h,expp: hash_func,
+		p: text
+
+  intruder_knowledge={ui, sj, gw, kig, h, p}
+
+  composition
+         session(ui,sj,gw,  kdi,kei,kxj,xgwn,  h,expp,p)
+      /\ session(ui, i,gw,  kdi,kei,kig,xgwn,  h,expp,p)
+      /\ session( i,sj,gw,  kig,keig,kxj,xgwn, h,expp,p)
+
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+goal
+
+ % Confidentiality (G12)
+   secrecy_of sc_user_id, 
+			  sc_sensor_id
+
+ % Message authentication (G2)
+   authentication_on shared_key
+
+end goal
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+environment()
